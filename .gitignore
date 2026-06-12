@@ -1,0 +1,43 @@
+# Environment & Secrets
+.env
+*.env
+
+# Virtual Environment
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Data Files (too large for git)
+backend/data/raw/
+backend/data/processed/
+backend/data/synthetic/
+
+# Database
+*.db
+*.sqlite
+
+# ChromaDB local storage
+chroma_db/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build
+dist/
+build/
+*.egg-info/

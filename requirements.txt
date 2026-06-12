@@ -1,0 +1,34 @@
+# requirements.txt
+
+# Backend
+fastapi
+uvicorn
+python-dotenv
+pydantic
+
+# LLM & RAG
+langchain
+langchain-openai
+langchain-community
+chromadb
+openai
+tiktoken
+
+# NLP
+transformers
+torch
+sentencepiece
+
+# Database
+sqlalchemy
+psycopg2-binary
+redis
+
+# Data Collection
+requests
+beautifulsoup4
+httpx
+
+# Utilities
+pandas
+tqdm
