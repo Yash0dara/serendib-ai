@@ -1,139 +1,78 @@
-# backend/core/smart_pipeline.py
-
 import os
 import asyncio
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 from backend.nlp.analyzer import nlp_analyzer
-from backend.rag.retrieval import SerendibRetriever
+from backend.agents.router import router_agent
+from backend.agents.knowledge import knowledge_agent
+from backend.agents.itinerary import itinerary_agent
+from backend.agents.weather import weather_agent
+from backend.agents.budget import budget_agent
+from backend.agents.validator import validator_agent
 from backend.database.mongodb import mongodb
 
 load_dotenv()
 
-# ============================================
-# INTENT → RAG CATEGORY MAPPING
-# ============================================
-
+# Intent → RAG category for knowledge agent
 INTENT_TO_CATEGORY = {
-    "trip_planning":        "itinerary",
-    "food_recommendation":  "food",
-    "transport_query":      "transport",
-    "budget_query":         "practical",
-    "weather_query":        "practical",
-    "cultural_info":        "culture",
-    "adventure_activity":   "adventure",
-    "safety_query":         "practical",
-    "emergency":            "practical",
-    "greeting":             None,
-    "general_question":     None
+    "food_recommendation": "food",
+    "transport_query":     "transport",
+    "cultural_info":       "culture",
+    "adventure_activity":  "adventure",
+    "safety_query":        "practical",
+    "general_question":    None
 }
 
-# ============================================
-# TONE INSTRUCTIONS BASED ON SENTIMENT
-# ============================================
+# Greeting response
+GREETING_RESPONSE = """
+Hello! 👋 Welcome to Serendib AI.
 
-TONE_INSTRUCTIONS = {
-    "positive": """
-User is excited and enthusiastic.
-Match their energy.
-Be warm and encouraging.
-Add interesting facts to excite them more.
-""",
-    "negative": """
-User seems unhappy or disappointed.
-Be empathetic and understanding first.
-Acknowledge their frustration.
-Then provide helpful solution.
-""",
-    "neutral": """
-User is calm and informational.
-Be clear, direct and practical.
-Focus on facts and specifics.
-"""
-}
+I am your intelligent Sri Lanka travel assistant.
 
-# ============================================
-# USER STATE INSTRUCTIONS
-# ============================================
+I can help you with:
+🗺  **Trip Planning**     → Personalized itineraries
+🍛  **Food Guide**        → Local cuisine and restaurants
+🚂  **Transport**         → Trains, buses, tuk-tuks
+💰  **Budget Planning**   → Daily cost estimates
+🌤  **Weather**           → Real time conditions
+🏛  **Culture**           → Temples, festivals, heritage
+🏄  **Adventure**         → Hiking, surfing, wildlife
+🛡  **Safety**            → Solo traveler tips
 
-USER_STATE_INSTRUCTIONS = {
-    "frustrated": """
-IMPORTANT: User is frustrated.
-Start response by acknowledging this.
-Example: "I understand that's frustrating..."
-Be extra helpful and offer alternatives.
-""",
-    None: ""
-}
-
-# ============================================
-# SYSTEM PROMPT
-# ============================================
-
-SYSTEM_PROMPT = """
-You are Serendib AI, an expert Sri Lanka travel assistant.
-
-Tone instruction:
-{tone}
-
-User state instruction:
-{user_state_instruction}
-
-Your rules:
-- ONLY answer Sri Lanka travel questions
-- Base answers on provided context
-- Be specific with prices, times, locations
-- Use clear formatting with line breaks
-- If context missing say:
-  "I don't have that specific detail.
-   Please check srilanka.travel for accuracy."
-- Never make up facts or prices
-
-Traveler profile:
-- Type     : {traveler_type}
-- Budget   : {budget_level}
-- Location : {locations}
-- Duration : {duration}
-
-Retrieved knowledge:
-{context}
+What would you like to know about Sri Lanka? 🌴
 """
 
+# Emergency response
+EMERGENCY_RESPONSE = """
+🚨 EMERGENCY CONTACTS — SRI LANKA
 
-# ============================================
-# SMART PIPELINE CLASS
-# ============================================
+Tourist Police    : 1912
+General Emergency : 119
+Ambulance         : 110
+Fire Brigade      : 111
+
+Tourist Police HQ : +94 11 2 421052
+Colombo Hospital  : +94 11 2 691111
+Kandy Hospital    : +94 81 2 222261
+
+Stay calm. Help is available. 🙏
+"""
+
 
 class SmartPipeline:
     """
-    Connects NLP + RAG + LLM into one
-    intelligent travel assistant pipeline.
+    Master pipeline connecting all agents.
 
-    Every user message goes through:
-    1. NLP analysis
-    2. Smart RAG retrieval
-    3. Personalized LLM response
-    4. MongoDB storage
-    5. Memory management
+    Flow:
+    Message → NLP → Router → Specialized Agent
+            → Validator → MongoDB → Response
     """
 
     def __init__(self):
-        self.retriever = SerendibRetriever()
-        self.llm = ChatGroq(
-            api_key=os.getenv("GROQ_API_KEY"),
-            model_name="llama-3.1-8b-instant",
-            temperature=0.7,
-            max_tokens=1024
-        )
-        # session_id → conversation history
         self.memories = {}
-        print("✅ Smart Pipeline ready!")
+        print("✅ Smart Pipeline with Agents ready!")
 
-    # ============================================
-    # MEMORY MANAGEMENT
-    # ============================================
+    # ── Memory Management ──
 
     def get_memory(self, session_id: str) -> list:
         if session_id not in self.memories:
@@ -149,8 +88,6 @@ class SmartPipeline:
         memory = self.get_memory(session_id)
         memory.append(HumanMessage(content=user_msg))
         memory.append(AIMessage(content=ai_msg))
-
-        # Keep last 8 messages only
         if len(memory) > 8:
             self.memories[session_id] = memory[-8:]
 
@@ -158,155 +95,15 @@ class SmartPipeline:
         memory = self.get_memory(session_id)
         if not memory:
             return "No previous conversation."
-
         history = []
         for msg in memory:
             if isinstance(msg, HumanMessage):
                 history.append(f"Traveler: {msg.content}")
             else:
                 history.append(f"Serendib AI: {msg.content}")
-
         return "\n".join(history)
 
-    # ============================================
-    # USER PROFILE MANAGEMENT
-    # ============================================
-
-    def update_user_profile(
-        self,
-        session_id: str,
-        nlp_result: dict
-    ):
-        """
-        Updates MongoDB user profile
-        based on NLP extracted entities.
-        """
-        entities = nlp_result["entities"]
-        profile_update = {}
-
-        if entities.get("budget_level"):
-            profile_update["budget_level"] = entities["budget_level"]
-
-        if entities.get("locations"):
-            profile_update["last_location"] = entities["locations"][0]
-
-        if entities.get("duration"):
-            profile_update["trip_duration"] = entities["duration"]
-
-        if profile_update:
-            mongodb.update_user_profile(session_id, profile_update)
-
-    # ============================================
-    # SMART RAG SEARCH
-    # ============================================
-
-    def smart_retrieve(
-        self,
-        query: str,
-        nlp_result: dict
-    ) -> tuple[list, str]:
-        """
-        Uses NLP results to search RAG smartly.
-
-        Returns:
-        - results: list of relevant documents
-        - context: formatted string for LLM
-        """
-        intent = nlp_result["intent"]
-        entities = nlp_result["entities"]
-        locations = entities.get("locations", [])
-
-        # Get RAG category from intent
-        category = INTENT_TO_CATEGORY.get(intent)
-
-        # Build enhanced query using entities
-        enhanced_query = query
-
-        if locations:
-            location_str = " ".join(locations)
-            enhanced_query = f"{query} {location_str}"
-
-        if entities.get("duration"):
-            enhanced_query += f" {entities['duration']}"
-
-        # Search with category filter
-        results = self.retriever.smart_search(
-            query=enhanced_query,
-            category=category,
-            k=4
-        )
-
-        # If no results with filter → search without filter
-        if not results:
-            results = self.retriever.search(query, k=4)
-
-        context = self.retriever.format_context(results)
-        return results, context
-
-    # ============================================
-    # GREETING HANDLER
-    # ============================================
-
-    def handle_greeting(self, session_id: str) -> str:
-        """
-        Special handler for greeting intent.
-        No RAG needed.
-        """
-        user = mongodb.get_user(session_id)
-        name = user.get("name", "Traveler") if user else "Traveler"
-
-        return f"""
-Hello {name}! 👋 Welcome to Serendib AI.
-
-I am your intelligent Sri Lanka travel assistant.
-
-I can help you with:
-🗺  **Trip Planning**     → Personalized itineraries
-🍛  **Food Guide**        → Local cuisine and restaurants
-🚂  **Transport**         → Trains, buses, tuk-tuks
-💰  **Budget Planning**   → Daily cost estimates
-🌤  **Weather Guide**     → Best time to visit
-🏛  **Culture & History** → Temples, festivals, heritage
-🏄  **Adventure**         → Hiking, surfing, wildlife safari
-🛡  **Safety**            → Solo traveler safety tips
-
-What would you like to know about Sri Lanka? 🌴
-"""
-
-    # ============================================
-    # EMERGENCY HANDLER
-    # ============================================
-
-    def handle_emergency(self) -> str:
-        """
-        Special handler for emergency intent.
-        Returns immediate help information.
-        """
-        return """
-🚨 EMERGENCY CONTACTS — SRI LANKA
-
-Tourist Police    : 1912
-General Emergency : 119
-Ambulance         : 110
-Fire              : 111
-
-Tourist Police Headquarters:
-📍 Colombo — +94 11 2 421052
-
-Hospital:
-📍 Colombo National Hospital — +94 11 2 691111
-📍 Kandy General Hospital    — +94 81 2 222261
-
-Embassy contacts depend on your nationality.
-Please contact your country's embassy immediately
-if you need consular assistance.
-
-Stay calm. Help is available. 🙏
-"""
-
-    # ============================================
-    # MAIN PROCESS FUNCTION
-    # ============================================
+    # ── Main Process ──
 
     async def process(
         self,
@@ -314,28 +111,13 @@ Stay calm. Help is available. 🙏
         user_message: str,
         conversation_id: str = None
     ) -> dict:
-        """
-        Main function that processes every user message.
 
-        Returns:
-        {
-            "answer": str,
-            "intent": str,
-            "entities": dict,
-            "sentiment": str,
-            "sources": list,
-            "user_state": str
-        }
-        """
-
-        # ── Step 1: NLP Analysis ──
+        # Step 1 — NLP Analysis
         nlp_result = nlp_analyzer.analyze(user_message)
         intent = nlp_result["intent"]
-        sentiment = nlp_result["sentiment"]
-        user_state = nlp_result.get("user_state")
-        entities = nlp_result["entities"]
+        history = self.format_history(session_id)
 
-        # ── Step 2: Save user message to MongoDB ──
+        # Step 2 — Save user message
         if conversation_id:
             mongodb.save_message(
                 conversation_id=conversation_id,
@@ -344,118 +126,114 @@ Stay calm. Help is available. 🙏
                 intent=intent
             )
 
-        # ── Step 3: Update user profile ──
-        self.update_user_profile(session_id, nlp_result)
+        # Step 3 — Update user profile
+        entities = nlp_result.get("entities", {})
+        profile_update = {}
+        if entities.get("budget_level"):
+            profile_update["budget_level"] = entities["budget_level"]
+        if entities.get("locations"):
+            profile_update["last_location"] = entities["locations"][0]
+        if entities.get("duration"):
+            profile_update["trip_duration"] = entities["duration"]
+        if profile_update:
+            mongodb.update_user_profile(session_id, profile_update)
 
-        # ── Step 4: Handle special intents ──
-        if intent == "greeting":
-            answer = self.handle_greeting(session_id)
-            if conversation_id:
-                mongodb.save_message(
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=answer
-                )
-            self.update_memory(session_id, user_message, answer)
-            return {
-                "answer": answer,
-                "intent": intent,
-                "entities": entities,
-                "sentiment": sentiment,
-                "sources": [],
-                "user_state": user_state
-            }
+        # Step 4 — Route to correct agent
+        routing = router_agent.explain(nlp_result)
+        agent_name = routing["agent"]
 
-        if intent == "emergency":
-            answer = self.handle_emergency()
-            if conversation_id:
-                mongodb.save_message(
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=answer
-                )
-            self.update_memory(session_id, user_message, answer)
-            return {
-                "answer": answer,
-                "intent": intent,
-                "entities": entities,
-                "sentiment": sentiment,
-                "sources": [],
-                "user_state": user_state
-            }
+        print(f"\n🔀 Router → {agent_name} agent")
+        print(f"   Intent : {intent}")
+        print(f"   Reason : {routing['reason']}")
 
-        # ── Step 5: Smart RAG Retrieval ──
-        results, context = self.smart_retrieve(
-            user_message,
-            nlp_result
-        )
+        # Step 5 — Handle with correct agent
+        context_used = ""
 
-        # ── Step 6: Get conversation history ──
-        history = self.format_history(session_id)
+        if agent_name == "greeting":
+            answer = GREETING_RESPONSE
+            sources = []
 
-        # ── Step 7: Get user profile ──
-        user = mongodb.get_user(session_id)
-        profile = user or {}
+        elif agent_name == "emergency":
+            answer = EMERGENCY_RESPONSE
+            sources = []
 
-        # ── Step 8: Build personalized prompt ──
-        tone = TONE_INSTRUCTIONS.get(sentiment, TONE_INSTRUCTIONS["neutral"])
-        user_state_instruction = USER_STATE_INSTRUCTIONS.get(
-            user_state,
-            ""
-        )
+        elif agent_name == "itinerary":
+            result = await itinerary_agent.process(
+                query=user_message,
+                nlp_result=nlp_result,
+                history=history,
+                session_id=session_id
+            )
+            answer = result["answer"]
+            sources = result["sources"]
+            context_used = result.get("context_used", "")
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
-            ("human", f"""
-Conversation History:
-{history}
+        elif agent_name == "weather":
+            result = await weather_agent.process(
+                query=user_message,
+                nlp_result=nlp_result,
+                history=history
+            )
+            answer = result["answer"]
+            sources = result["sources"]
 
-Current Question:
-{user_message}
-""")
-        ])
+        elif agent_name == "budget":
+            result = await budget_agent.process(
+                query=user_message,
+                nlp_result=nlp_result,
+                history=history
+            )
+            answer = result["answer"]
+            sources = result["sources"]
+            context_used = result.get("context_used", "")
 
-        # ── Step 9: Generate LLM response ──
-        chain = prompt | self.llm
+        else:
+            # Default → Knowledge Agent
+            category = INTENT_TO_CATEGORY.get(intent)
+            result = await knowledge_agent.process(
+                query=user_message,
+                nlp_result=nlp_result,
+                history=history,
+                category=category
+            )
+            answer = result["answer"]
+            sources = result["sources"]
+            context_used = result.get("context_used", "")
 
-        response = chain.invoke({
-            "tone": tone,
-            "user_state_instruction": user_state_instruction,
-            "traveler_type": profile.get("traveler_type", "Not specified"),
-            "budget_level": entities.get("budget_level") or profile.get("budget_level", "Not specified"),
-            "locations": ", ".join(entities.get("locations", [])) or "Not specified",
-            "duration": entities.get("duration") or profile.get("trip_duration", "Not specified"),
-            "context": context
-        })
+        # Step 6 — Validate response
+        if context_used and agent_name not in ["greeting", "emergency"]:
+            final_answer, validation = validator_agent.apply(
+                question=user_message,
+                response=answer,
+                context=context_used
+            )
+            print(f"   Validator: passed={validation.get('passed')} "
+                  f"score={validation.get('confidence_score')}")
+        else:
+            final_answer = answer
+            validation = {"passed": True, "confidence_score": 1.0}
 
-        answer = response.content
-
-        # ── Step 10: Save response to MongoDB ──
+        # Step 7 — Save response to MongoDB
         if conversation_id:
             mongodb.save_message(
                 conversation_id=conversation_id,
                 role="assistant",
-                content=answer
+                content=final_answer
             )
 
-        # ── Step 11: Update memory ──
-        self.update_memory(session_id, user_message, answer)
-
-        # ── Step 12: Extract sources ──
-        sources = list(set([
-            doc.metadata.get("topic", "Sri Lanka")
-            for doc in results
-        ]))
+        # Step 8 — Update memory
+        self.update_memory(session_id, user_message, final_answer)
 
         return {
-            "answer": answer,
+            "answer": final_answer,
             "intent": intent,
-            "entities": entities,
-            "sentiment": sentiment,
+            "agent_used": agent_name,
+            "entities": nlp_result.get("entities"),
+            "sentiment": nlp_result.get("sentiment"),
+            "user_state": nlp_result.get("user_state"),
             "sources": sources,
-            "user_state": user_state
+            "validation": validation
         }
 
 
-# Single instance
 smart_pipeline = SmartPipeline()
