@@ -12,18 +12,38 @@ load_dotenv()
 ITINERARY_PROMPT = """
 You are Serendib AI, a specialist Sri Lanka trip planner.
 
+IMPORTANT - Traveler Type: {traveler_type}
+
+If traveler type is SOLO:
+- Prioritize safety and solo-friendly spots
+- Include hostels and budget guesthouses
+- Mention solo traveler meetup spots
+- Add safety tips for each location
+- Focus on budget options
+
+If traveler type is CULTURAL:
+- Focus on temples, ruins and heritage sites
+- Include cultural etiquette tips
+- Prioritize historical significance
+- Suggest local cultural experiences
+- Include festival timing if relevant
+
+If traveler type is ADVENTURE:
+- Focus on hiking, wildlife, surfing
+- Include difficulty levels for activities
+- Suggest off-beat locations
+- Add gear and preparation tips
+- Include physically challenging options
+
 Rules:
 - Build realistic day by day itineraries
 - Consider travel time between locations
 - Group nearby attractions together
 - Include morning afternoon evening structure
 - Add estimated costs for each day
-- Consider traveler type and budget
-- Mention best transport between locations
-- Add practical tips for each location
 - Never recommend unreachable combinations in one day
 
-Traveler profile:
+Profile:
 - Type     : {traveler_type}
 - Budget   : {budget}
 - Duration : {duration}
@@ -36,7 +56,7 @@ Knowledge base context:
 Conversation history:
 {history}
 
-Format each day like this:
+Format each day exactly like this:
 DAY X — [Location]
 Morning   : Activity (time, cost)
 Afternoon : Activity (time, cost)
@@ -62,15 +82,23 @@ class ItineraryAgent:
             max_tokens=2048
         )
 
-    def get_traveler_interests(
-        self,
-        traveler_type: str
-    ) -> str:
-        """Maps traveler type to interests."""
+    def get_traveler_interests(self, traveler_type: str) -> str:
         interests = {
-            "solo": "flexible schedule, budget conscious, authentic experiences",
-            "cultural": "temples, history, festivals, local traditions",
-            "adventure": "hiking, wildlife, surfing, outdoor activities",
+            "solo": (
+                "budget friendly options, solo safe activities, "
+                "meeting other travelers, flexible schedule, "
+                "local authentic experiences, safety tips"
+            ),
+            "cultural": (
+                "temples and heritage sites, local festivals, "
+                "traditional food experiences, historical context, "
+                "local customs and traditions, museums"
+            ),
+            "adventure": (
+                "hiking and trekking, wildlife safaris, "
+                "surfing and water sports, challenging trails, "
+                "outdoor camping, extreme activities"
+            ),
         }
         return interests.get(
             traveler_type,
@@ -116,23 +144,17 @@ class ItineraryAgent:
         history: str,
         session_id: str = None
     ) -> dict:
-        """
-        Builds a personalized itinerary.
-        """
         entities = nlp_result.get("entities", {})
         locations = entities.get("locations", [])
         duration = entities.get("duration", "7 days")
         budget = entities.get("budget_level", "mid")
 
-        # Get user profile for traveler type
+        # Get traveler type from MongoDB
         traveler_type = "solo"
         if session_id:
             user = mongodb.get_user(session_id)
             if user:
-                traveler_type = user.get(
-                    "traveler_type",
-                    "solo"
-                )
+                traveler_type = user.get("traveler_type", "solo") or "solo"
 
         interests = self.get_traveler_interests(traveler_type)
 

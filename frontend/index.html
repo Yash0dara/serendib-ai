@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serendib AI — Sri Lanka Travel Assistant</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🌴</span>
+                <div class="logo-text">
+                    <h1>Serendib AI</h1>
+                    <p>Sri Lanka Travel Assistant</p>
+                </div>
+            </div>
+            <div class="status-badge">
+                <span class="status-dot"></span>
+                <span>Online</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <h3>🗺 Quick Topics</h3>
+            <div class="quick-topics">
+                <button class="topic-btn" onclick="sendQuickMessage('Plan a 7 day Sri Lanka trip')">
+                    📅 Trip Planning
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('What food should I try in Sri Lanka?')">
+                    🍛 Food Guide
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('How do I travel by train in Sri Lanka?')">
+                    🚂 Train Travel
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('What is the budget for Sri Lanka travel?')">
+                    💰 Budget Guide
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('What is the weather like in Colombo?')">
+                    🌤 Weather
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('Tell me about temples in Sri Lanka')">
+                    🏛 Culture
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('Best hiking trails in Sri Lanka')">
+                    🏔 Adventure
+                </button>
+                <button class="topic-btn" onclick="sendQuickMessage('Is Sri Lanka safe for solo travelers?')">
+                    🛡 Safety
+                </button>
+            </div>
+
+            <!-- Session Info -->
+            <div class="session-info">
+                <h3>📊 Session Info</h3>
+                <div id="session-details">
+                    <p>Starting session...</p>
+                </div>
+            </div>
+
+            <!-- Traveler Type -->
+            <div class="traveler-type">
+                <h3>👤 I Am A...</h3>
+                <select id="traveler-select" onchange="updateTravelerType()">
+                    <option value="">Select type</option>
+                    <option value="solo">Solo Traveler</option>
+                    <option value="cultural">Cultural Traveler</option>
+                    <option value="adventure">Adventure Traveler</option>
+                </select>
+            </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="chat-container">
+
+            <!-- Messages Area -->
+            <div class="messages-area" id="messages-area">
+                <!-- Welcome message -->
+                <div class="message bot-message">
+                    <div class="message-avatar">🌴</div>
+                    <div class="message-content">
+                        <div class="message-bubble">
+                            <p>Welcome to <strong>Serendib AI</strong>! 🌟</p>
+                            <p>I am your intelligent Sri Lanka travel assistant.</p>
+                            <p>Ask me anything about traveling in Sri Lanka!</p>
+                        </div>
+                        <div class="message-meta">Serendib AI • Just now</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div class="typing-indicator" id="typing-indicator" style="display:none">
+                <div class="message-avatar">🌴</div>
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-container">
+                    <textarea
+                        id="message-input"
+                        placeholder="Ask me about Sri Lanka travel..."
+                        rows="1"
+                        onkeydown="handleKeyDown(event)"
+                        oninput="autoResize(this)"
+                    ></textarea>
+                    <button
+                        class="send-button"
+                        id="send-button"
+                        onclick="sendMessage()"
+                    >
+                        ➤
+                    </button>
+                </div>
+                <div class="input-footer">
+                    <span id="intent-display"></span>
+                    <span id="agent-display"></span>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Info Panel -->
+        <aside class="info-panel">
+            <h3>📍 Last Response Info</h3>
+            <div id="response-info">
+                <p class="info-placeholder">
+                    Send a message to see response details
+                </p>
+            </div>
+
+            <h3>🌤 Sri Lanka Weather</h3>
+            <div id="weather-widget">
+                <button class="weather-btn" onclick="getWeather('Colombo')">Colombo</button>
+                <button class="weather-btn" onclick="getWeather('Kandy')">Kandy</button>
+                <button class="weather-btn" onclick="getWeather('Ella')">Ella</button>
+                <button class="weather-btn" onclick="getWeather('Galle')">Galle</button>
+                <div id="weather-result"></div>
+            </div>
+        </aside>
+
+    </div>
+
+    <script src="/static/chat.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from backend.rag.retrieval import SerendibRetriever
 from dotenv import load_dotenv
-
+from backend.database.mongodb import mongodb
 load_dotenv()
 
 KNOWLEDGE_PROMPT = """
@@ -19,10 +19,27 @@ Rules:
 - Use clear formatting
 - If unsure say "Please verify at srilanka.travel"
 - Never make up facts
+- IMPORTANT: Personalize your answer for the traveler type
 
 Traveler profile:
-- Budget : {budget}
-- Locations of interest: {locations}
+- Type     : {traveler_type}
+- Budget   : {budget}
+- Locations: {locations}
+
+If traveler type is solo:
+- Focus on solo-friendly options
+- Mention safety where relevant
+- Suggest budget-friendly options
+
+If traveler type is cultural:
+- Focus on traditional and authentic experiences
+- Mention historical significance
+- Suggest heritage sites and local customs
+
+If traveler type is adventure:
+- Focus on exciting and unique experiences
+- Mention outdoor activities
+- Suggest off-the-beaten-path options
 
 Context from knowledge base:
 {context}
@@ -74,13 +91,18 @@ class KnowledgeAgent:
         history: str,
         category: str = None
     ) -> dict:
-        """
-        Processes knowledge query through RAG + LLM.
-        """
         entities = nlp_result.get("entities", {})
         sentiment = nlp_result.get("sentiment", "neutral")
         user_state = nlp_result.get("user_state")
         locations = entities.get("locations", [])
+
+        # Get traveler type from session
+        traveler_type = "not specified"
+        if hasattr(self, '_current_session') and self._current_session:
+            from backend.database.mongodb import mongodb
+            user = mongodb.get_user(self._current_session)
+            if user:
+                traveler_type = user.get("traveler_type", "not specified") or "not specified"
 
         # Build enhanced query
         enhanced_query = query
@@ -113,6 +135,7 @@ class KnowledgeAgent:
         response = chain.invoke({
             "tone": tone,
             "user_state_note": state_note,
+            "traveler_type": traveler_type,
             "budget": entities.get("budget_level", "not specified"),
             "locations": ", ".join(locations) or "not specified",
             "context": context,

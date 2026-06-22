@@ -190,6 +190,7 @@ class SmartPipeline:
         else:
             # Default → Knowledge Agent
             category = INTENT_TO_CATEGORY.get(intent)
+            knowledge_agent._current_session = session_id
             result = await knowledge_agent.process(
                 query=user_message,
                 nlp_result=nlp_result,

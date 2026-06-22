@@ -5,15 +5,16 @@ from pydantic import BaseModel
 from backend.database.mongodb import mongodb
 import uuid
 
+from typing import Optional
 router = APIRouter(prefix="/session", tags=["Session"])
 
 
 # ── Request/Response Models ──
 
+
 class StartSessionRequest(BaseModel):
     language: str = "en"
-    traveler_type: str = None
-
+    traveler_type: Optional[str] = None
 
 class StartSessionResponse(BaseModel):
     session_id: str
