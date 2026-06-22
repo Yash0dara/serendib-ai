@@ -10,6 +10,7 @@ from backend.agents.weather import weather_agent
 from backend.agents.budget import budget_agent
 from backend.agents.validator import validator_agent
 from backend.database.mongodb import mongodb
+from backend.guardrails.safety import safety_guard
 
 load_dotenv()
 
@@ -111,7 +112,38 @@ class SmartPipeline:
         user_message: str,
         conversation_id: str = None
     ) -> dict:
+        # ── SAFETY CHECK FIRST ──
+        safety_result = safety_guard.check(user_message)
 
+        if not safety_result["safe"]:
+            answer = safety_result["response"]
+
+            if conversation_id:
+                mongodb.save_message(
+                    conversation_id=conversation_id,
+                    role="user",
+                    content=user_message,
+                    intent=safety_result["reason"]
+                )
+                mongodb.save_message(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=answer
+                )
+
+            self.update_memory(session_id, user_message, answer)
+
+            return {
+                "answer": answer,
+                "intent": safety_result["reason"],
+                "agent_used": "safety_guard",
+                "entities": {},
+                "sentiment": "neutral",
+                "user_state": None,
+                "sources": [],
+                "validation": {"passed": True, "confidence_score": 1.0}
+            }
+    
         # Step 1 — NLP Analysis
         nlp_result = nlp_analyzer.analyze(user_message)
         intent = nlp_result["intent"]
